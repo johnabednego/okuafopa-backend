@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 
+const OTP_PURPOSES = ['emailVerification', 'passwordReset'];
+
 const userSchema = mongoose.Schema({
   // ————— Core Identity —————
   email: {
@@ -41,13 +43,13 @@ const userSchema = mongoose.Schema({
   //   },
   // },
   profileImage: String,
-  notificationPrefs: {
-    email: { type: Boolean, default: true },
-    push: { type: Boolean, default: true },
-    sms: { type: Boolean, default: false },
-  },
+  emailNotification: { type: Boolean, default: true },
+  smsNotification: { type: Boolean, default: false },
   // ————— Verification & Reset via OTP —————
   emailVerified: { type: Boolean, default: false },
+
+  // User status
+  isActive: { type: Boolean, default: true },
 
   // one-time code (6-digit string), used for either verifying email or resetting pw
   otp: {
