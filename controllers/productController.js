@@ -1,5 +1,5 @@
 const Product = require('../models/Product');
-const notificationService = require('../services/notificationService');
+const notificationService = require('../services/emailService');
 const withAudit = require('../utils/withAudit');
 
 /**

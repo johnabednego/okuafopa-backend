@@ -7,6 +7,7 @@ const connectDB = require('./config/db');
 const setupSwaggerDocs = require('./config/swaggerUiConfig');
 const userRoutes = require('./routes/userRoutes');
 const authRoutes = require('./routes/authRoutes');
+const productRoutes = require('./routes/productRoutes');
 const auditLogRoutes = require('./routes/auditLogRoutes');
 
 
@@ -42,6 +43,8 @@ if (process.env.NODE_ENV !== 'production') {
 app.use('/api/users', userRoutes);
 // Mount auth routes
 app.use('/api/auth', authRoutes);
+// Mount product routes
+app.use('/api/products', productRoutes);
 // Mount auditLog routes
 app.use('/api/audit-logs', auditLogRoutes);
 
