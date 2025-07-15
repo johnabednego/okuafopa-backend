@@ -5,11 +5,13 @@ const morgan = require('morgan');
 const customCors = require('./middleware/customCors');
 const connectDB = require('./config/db');
 const setupSwaggerDocs = require('./config/swaggerUiConfig');
+const auditLogRoutes = require('./routes/auditLogRoutes');
 const userRoutes = require('./routes/userRoutes');
 const authRoutes = require('./routes/authRoutes');
 const productRoutes = require('./routes/productRoutes');
 const orderRoutes = require('./routes/orderRoutes');
-const auditLogRoutes = require('./routes/auditLogRoutes');
+const transactionRoutes = require('./routes/transactionRoutes');
+
 
 
 
@@ -40,6 +42,8 @@ if (process.env.NODE_ENV !== 'production') {
   setupSwaggerDocs(app);
 }
 
+// Mount auditLog routes
+app.use('/api/audit-logs', auditLogRoutes);
 // Mount user routes
 app.use('/api/users', userRoutes);
 // Mount auth routes
@@ -48,8 +52,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 // Mount order routes
 app.use('/api/orders', orderRoutes);
-// Mount auditLog routes
-app.use('/api/audit-logs', auditLogRoutes);
+// Mount transaction routes
+app.use('/api/transactions', transactionRoutes);
+
 
 
 // Example root route
