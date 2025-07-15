@@ -251,3 +251,39 @@ exports.sendOrderNotification = async (type, order, recipient) => {
     html
   });
 };
+
+/**
+ * Send an email notification for a new chat message.
+ *
+ * @param {object} message    – the newly-created Message doc (with at least .text, .order, .sender)
+ * @param {object} recipient  – { email, firstName, lastName }
+ */
+exports.sendMessageNotification = async (message, recipient) => {
+  // Grab a snippet of the message
+  const snippet = message.text.length > 100
+    ? message.text.slice(0, 100) + '…'
+    : message.text;
+
+  const fullName = `${recipient.firstName} ${recipient.lastName}`;
+  const subject = `New message on order ${message.order}`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width:600px; margin:auto; padding:20px; background:#f7f7f7; border-radius:8px;">
+      <h2 style="color:#2c3e50;">New message in Okuafopa chat</h2>
+      <p>Hi ${fullName},</p>
+      <p>You have a new message on <strong>Order ID ${message.order}</strong>:</p>
+      <blockquote style="border-left:4px solid #ccc; padding-left:10px; color:#555;">
+        ${snippet}
+      </blockquote>
+      <p><a href="https://your-frontend.com/orders/${message.order}/chat">View the full conversation & reply</a></p>
+      <hr style="margin-top:20px;" />
+      <p style="font-size:12px; color:#999;">&copy; ${new Date().getFullYear()} Okuafopa Marketplace</p>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: SMTP_FROM,
+    to: recipient.email,
+    subject,
+    html
+  });
+};
