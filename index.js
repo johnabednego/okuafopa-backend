@@ -12,6 +12,7 @@ const productRoutes = require('./routes/productRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const transactionRoutes = require('./routes/transactionRoutes');
 const messageRoutes = require('./routes/messageRoutes');
+const feedbackRoutes = require('./routes/feedbackRoutes');
 
 
 
@@ -57,6 +58,8 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/transactions', transactionRoutes);
 // Mount message routes
 app.use('/api/messages', messageRoutes);
+// Mount feedback routes
+app.use('/api/feedbacks', feedbackRoutes);
 
 
 

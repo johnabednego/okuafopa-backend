@@ -287,3 +287,38 @@ exports.sendMessageNotification = async (message, recipient) => {
     html
   });
 };
+
+
+/**
+ * Notify a farmer that they received new feedback.
+ * @param {object} feedback  – the newly-created Feedback doc
+ * @param {object} farmer    – { email, firstName, lastName }
+ */
+exports.sendFeedbackCreatedNotification = async (feedback, farmer) => {
+  const fullName = `${farmer.firstName} ${farmer.lastName}`;
+  const subject = `New feedback on Order ${feedback.order}`;
+  const html = `
+    <p>Hi ${fullName},</p>
+    <p>You’ve received a new ${feedback.rating}‑star review:</p>
+    <blockquote>${feedback.comment || '—'}</blockquote>
+    <p><a href="https://your‑frontend.com/orders/${feedback.order}/feedback">View and reply</a></p>
+  `;
+  await transporter.sendMail({ from: SMTP_FROM, to: farmer.email, subject, html });
+};
+
+/**
+ * Notify a buyer that their feedback got a response.
+ * @param {object} feedback  – the updated Feedback doc (including .response)
+ * @param {object} buyer     – { email, firstName, lastName }
+ */
+exports.sendFeedbackResponseNotification = async (feedback, buyer) => {
+  const fullName = `${buyer.firstName} ${buyer.lastName}`;
+  const subject = `Your feedback on Order ${feedback.order} has a reply`;
+  const html = `
+    <p>Hi ${fullName},</p>
+    <p>Your review on order <strong>${feedback.order}</strong> just received a response:</p>
+    <blockquote>${feedback.response.text}</blockquote>
+    <p><a href="https://your‑frontend.com/orders/${feedback.order}/feedback">View the conversation</a></p>
+  `;
+  await transporter.sendMail({ from: SMTP_FROM, to: buyer.email, subject, html });
+};
