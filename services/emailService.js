@@ -133,3 +133,121 @@ exports.sendProductNotification = async (type, product, recipient) => {
     html
   });
 };
+
+/**
+ * Send an order-related notification email.
+ *
+ * @param {'created'|'statusChanged'} type
+ * @param {object} order        – populated Order document (with items and buyer/product populated as needed)
+ * @param {object} recipient    – { email, firstName, lastName }
+ */
+exports.sendOrderNotification = async (type, order, recipient) => {
+  const {
+    _id,
+    items,
+    subtotal,
+    status,
+    deliveryMethod,
+    pickupInfo,
+    thirdPartyInfo,
+    createdAt,
+    updatedAt
+  } = order;
+
+  const fullName = `${recipient.firstName} ${recipient.lastName}`;
+  let subject, intro;
+
+  switch (type) {
+    case 'created':
+      subject = `Your order ${_id} has been placed`;
+      intro   = 'Thank you for your purchase! Your order details are below:';
+      break;
+    case 'statusChanged':
+      subject = `Order ${_id} status updated to "${status}"`;
+      intro   = `The status of your order has changed to "${status}".`;
+      break;
+    default:
+      subject = `Update on your order ${_id}`;
+      intro   = '';
+  }
+
+  // Build a table of items
+  const rowsHtml = items.map(it => `
+    <tr>
+      <td style="padding:8px; border:1px solid #ddd;">${it.product.title}</td>
+      <td style="padding:8px; border:1px solid #ddd;">${it.qty}</td>
+      <td style="padding:8px; border:1px solid #ddd;">\$${it.priceAtOrder.toFixed(2)}</td>
+      <td style="padding:8px; border:1px solid #ddd;">\$${(it.qty * it.priceAtOrder).toFixed(2)}</td>
+    </tr>
+  `).join('');
+
+  // Delivery details
+  let deliveryHtml = '';
+  if (deliveryMethod === 'pickup' && pickupInfo) {
+    deliveryHtml = `
+      <tr><td colspan="4" style="padding:8px; border:1px solid #ddd;">
+        <strong>Pickup Time:</strong> ${new Date(pickupInfo.timeSlot).toLocaleString()}
+      </td></tr>
+      <tr><td colspan="4" style="padding:8px; border:1px solid #ddd;">
+        <strong>Pickup Location:</strong> [${pickupInfo.location.coordinates.join(', ')}]
+      </td></tr>
+    `;
+  } else if (deliveryMethod === 'thirdParty' && thirdPartyInfo) {
+    deliveryHtml = `
+      <tr><td colspan="4" style="padding:8px; border:1px solid #ddd;">
+        <strong>Carrier ETA:</strong> ${new Date(thirdPartyInfo.eta).toLocaleString()}
+      </td></tr>
+      <tr><td colspan="4" style="padding:8px; border:1px solid #ddd;">
+        <strong>Shipping Cost:</strong> \$${thirdPartyInfo.cost.toFixed(2)}
+      </td></tr>
+    `;
+  }
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width:600px; margin:auto; padding:20px; background:#fff; border-radius:8px;">
+      <h2 style="color:#2c3e50;">${subject}</h2>
+      <p>Hi ${fullName},</p>
+      <p>${intro}</p>
+
+      <table style="width:100%; border-collapse:collapse; margin-top:20px;">
+        <thead>
+          <tr>
+            <th style="padding:8px; border:1px solid #ddd; text-align:left;">Item</th>
+            <th style="padding:8px; border:1px solid #ddd; text-align:right;">Qty</th>
+            <th style="padding:8px; border:1px solid #ddd; text-align:right;">Unit Price</th>
+            <th style="padding:8px; border:1px solid #ddd; text-align:right;">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+          <tr>
+            <td colspan="3" style="padding:8px; border:1px solid #ddd; text-align:right;"><strong>Subtotal</strong></td>
+            <td style="padding:8px; border:1px solid #ddd; text-align:right;">
+              <strong>\$${subtotal.toFixed(2)}</strong>
+            </td>
+          </tr>
+          ${deliveryHtml}
+          <tr>
+            <td colspan="4" style="padding:8px; border:1px solid #ddd; text-align:right;">
+              <em>Order placed: ${new Date(createdAt).toLocaleString()}</em>
+            </td>
+          </tr>
+          <tr>
+            <td colspan="4" style="padding:8px; border:1px solid #ddd; text-align:right;">
+              <em>Last updated: ${new Date(updatedAt).toLocaleString()}</em>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p style="font-size:12px; color:#999; margin-top:30px;">&copy; ${new Date().getFullYear()} Okuafopa Marketplace</p>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: SMTP_FROM,
+    to: recipient.email,
+    subject,
+    html
+  });
+};

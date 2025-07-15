@@ -8,6 +8,7 @@ const setupSwaggerDocs = require('./config/swaggerUiConfig');
 const userRoutes = require('./routes/userRoutes');
 const authRoutes = require('./routes/authRoutes');
 const productRoutes = require('./routes/productRoutes');
+const orderRoutes = require('./routes/orderRoutes');
 const auditLogRoutes = require('./routes/auditLogRoutes');
 
 
@@ -45,6 +46,8 @@ app.use('/api/users', userRoutes);
 app.use('/api/auth', authRoutes);
 // Mount product routes
 app.use('/api/products', productRoutes);
+// Mount order routes
+app.use('/api/orders', orderRoutes);
 // Mount auditLog routes
 app.use('/api/audit-logs', auditLogRoutes);
 
