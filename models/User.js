@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-
+const bcrypt = require('bcryptjs')
 const OTP_PURPOSES = ['emailVerification', 'passwordReset'];
 
 const userSchema = mongoose.Schema({

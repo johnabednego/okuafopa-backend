@@ -102,7 +102,7 @@ exports.forgotPassword = async (req, res, next) => {
     const { email } = req.body;
     const user = await User.findOne({ email });
     if (!user) {
-      return res.json({ message: 'If that email is registered, you’ll receive a reset code.' });
+      return res.status(404).json({ message: 'Email is not registered.' });
     }
 
     const otp = user.generateOTP('passwordReset');
@@ -159,7 +159,7 @@ exports.resendOTP = async (req, res, next) => {
     const user = await User.findOne({ email })
       .select('+otp +otpExpiry +otpPurpose +emailVerified');
     if (!user) {
-      return res.json({ message: 'If eligible, a new code will be sent.' });
+      return res.status(404).json({ message: 'Account does not exist!' });
     }
 
     if (user.otp && user.otpExpiry > Date.now()) {
