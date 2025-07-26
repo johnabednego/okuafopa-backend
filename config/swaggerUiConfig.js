@@ -5,7 +5,7 @@ const options = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'SprintSync Backend',
+      title: 'Okuafopa Backend',
       version: '1.0.0',
       description: 'Users can log work, track time, and lean on an LLM for quick planning help.',
     },

@@ -1,5 +1,5 @@
 /**
- * Stub AI service for SprintSync.
+ * Stub AI service for Okuafopa.
  * Two modes:
  *  1) draftDescription: turn a short title into a fuller task description
  *  2) dailyPlan: given a list of today's tasks, return a concise plan

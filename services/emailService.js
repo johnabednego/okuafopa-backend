@@ -15,7 +15,7 @@ if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS || !SMTP_FROM) {
   throw new Error('SMTP configuration is incomplete.');
 }
 
-const platformName = 'SprintSync';
+const platformName = 'Okuafopa';
 
 /**
  * Send a otp-related  email.

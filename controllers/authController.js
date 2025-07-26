@@ -15,6 +15,9 @@ exports.signup = async (req, res, next) => {
     if (await User.exists({ email })) {
       return res.status(409).json({ message: 'Email already registered' });
     }
+     if (await User.exists({ phoneNumber })) {
+      return res.status(409).json({ message: 'Phone Number already registered' });
+    }
 
     const user = new User({
       firstName, lastName, email, password,

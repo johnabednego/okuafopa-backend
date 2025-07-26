@@ -117,14 +117,25 @@ exports.deleteProduct = withAudit('Product', 'DELETE', async (req, res, next) =>
  */
 exports.listProducts = async (req, res, next) => {
   try {
-    const { page = 1, limit = 20, category, minPrice, maxPrice } = req.query;
-    const filter = { isActive: true };
+    const { page = 1, limit = 20, category, minPrice, maxPrice, farmer } = req.query;
+    const filter = {};
+    // Handle farmer query
+    if (farmer === 'me') {
+      filter.farmer = req.user.sub;  // from JWT
+    } else if (farmer) {
+      filter.farmer = farmer;  // specific user ID
+    } else {
+      filter.isActive = true;  // buyers see only active listings
+    }
+
+    // Filters
     if (category) filter.category = category;
     if (minPrice) filter.price = { ...filter.price, $gte: Number(minPrice) };
     if (maxPrice) filter.price = { ...filter.price, $lte: Number(maxPrice) };
 
     const [items, total] = await Promise.all([
       Product.find(filter)
+        .sort('-createdAt')
         .skip((page - 1) * limit)
         .limit(Number(limit))
         .lean(),

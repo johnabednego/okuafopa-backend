@@ -15,8 +15,10 @@ const withAudit = require('../utils/withAudit');
  * @swagger
  * /products:
  *   get:
- *     summary: List all products
+ *     summary: List all products (or only yours if ?farmer=me)
  *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: page
@@ -45,6 +47,11 @@ const withAudit = require('../utils/withAudit');
  *         schema:
  *           type: number
  *         description: Maximum price
+ *       - in: query
+ *         name: farmer
+ *         schema:
+ *           type: string
+ *         description: Use "me" to list your own products, or a specific farmer ID
  *     responses:
  *       200:
  *         description: A paginated list of products
@@ -63,8 +70,10 @@ const withAudit = require('../utils/withAudit');
  *                   type: array
  *                   items:
  *                     $ref: '#/components/schemas/Product'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
  */
-router.get('/', productCtl.listProducts);
+router.get('/', requireAuth, productCtl.listProducts);
 
 /**
  * @swagger
