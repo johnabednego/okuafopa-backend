@@ -1,14 +1,14 @@
 const mongoose = require('mongoose');
 
-const ProductSchema = new mongoose.Schema({
+const ProductListingSchema = new mongoose.Schema({
   farmer: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
   },
-  productItem:{ // wanted to name it product
+  productItem: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'ProductList',
+    ref: 'ProductItem', 
     required: true
   },
   description: {
@@ -26,21 +26,20 @@ const ProductSchema = new mongoose.Schema({
     min: 0
   },
   images: [{
-    type: String,   // URL to image
+    type: String, // URL to image
     trim: true
   }],
   deliveryOptions: {
     pickup: { type: Boolean, default: true },
     thirdParty: { type: Boolean, default: false }
   },
-  // Optionally store a copy of farmer’s location for quick geo‐queries
   location: {
     type: {
       type: String,
       enum: ['Point']
     },
     coordinates: {
-      type: [Number]  // [lng, lat]
+      type: [Number] // [lng, lat]
     }
   },
   isActive: {
@@ -55,7 +54,7 @@ const ProductSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Create 2dsphere index for geo queries
-ProductSchema.index({ location: '2dsphere' });
+// 2dsphere index for geo-queries
+ProductListingSchema.index({ location: '2dsphere' });
 
-module.exports = mongoose.model('Product', ProductSchema);
+module.exports = mongoose.model('ProductListing', ProductListingSchema);

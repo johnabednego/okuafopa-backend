@@ -59,7 +59,7 @@ exports.sendOTP = async (to, otp, emailPurpose) => {
  * @param {object} product     – populated Product document
  * @param {object} recipient   – { email, firstName, lastName }
  */
-exports.sendProductNotification = async (type, product, recipient) => {
+exports.sendProductListingNotification = async (type, product, recipient) => {
   const {
     title,
     description,
