@@ -76,19 +76,19 @@ exports.sendProductListingNotification = async (type, product, recipient) => {
   switch (type) {
     case 'created':
       subject = `Your product "${title}" is now live!`;
-      intro   = 'Your new product listing has been published successfully.';
+      intro = 'Your new product listing has been published successfully.';
       break;
     case 'updated':
       subject = `Your product "${title}" has been updated`;
-      intro   = 'Your product listing details have been updated.';
+      intro = 'Your product listing details have been updated.';
       break;
     case 'deleted':
       subject = `Your product "${title}" has been removed`;
-      intro   = 'Your product listing was deleted from the marketplace.';
+      intro = 'Your product listing was deleted from the marketplace.';
       break;
     default:
       subject = `Notification about your product "${title}"`;
-      intro   = '';
+      intro = '';
   }
 
   const html = `
@@ -144,7 +144,6 @@ exports.sendProductListingNotification = async (type, product, recipient) => {
 exports.sendOrderNotification = async (type, order, recipient) => {
   const {
     _id,
-    items,
     subtotal,
     status,
     deliveryMethod,
@@ -154,51 +153,67 @@ exports.sendOrderNotification = async (type, order, recipient) => {
     updatedAt
   } = order;
 
+  console.log("DEBUG order:", JSON.stringify(order, null, 2));
+
   const fullName = `${recipient.firstName} ${recipient.lastName}`;
   let subject, intro;
 
   switch (type) {
     case 'created':
       subject = `Your order ${_id} has been placed`;
-      intro   = 'Thank you for your purchase! Your order details are below:';
+      intro = 'Thank you for your purchase! Your order details are below:';
       break;
     case 'statusChanged':
       subject = `Order ${_id} status updated to "${status}"`;
-      intro   = `The status of your order has changed to "${status}".`;
+      intro = `The status of your order has changed to "${status}".`;
       break;
     default:
       subject = `Update on your order ${_id}`;
-      intro   = '';
+      intro = '';
   }
 
-  // Build a table of items
-  const rowsHtml = items.map(it => `
-    <tr>
-      <td style="padding:8px; border:1px solid #ddd;">${it.product.title}</td>
-      <td style="padding:8px; border:1px solid #ddd;">${it.qty}</td>
-      <td style="padding:8px; border:1px solid #ddd;">\$${it.priceAtOrder.toFixed(2)}</td>
-      <td style="padding:8px; border:1px solid #ddd;">\$${(it.qty * it.priceAtOrder).toFixed(2)}</td>
-    </tr>
-  `).join('');
+  // Flatten all items across subOrders
+  const allItems = (order.subOrders || []).flatMap(so => so.items || []);
+
+  const rowsHtml = allItems.map(it => {
+    const title = it?.product?.title || "Unnamed product";
+    const qty = typeof it?.qty === "number" ? it.qty : 0;
+
+    // Safely resolve unit price
+    const unitPrice = typeof it?.priceAtOrder === "number"
+      ? it.priceAtOrder
+      : (typeof it?.product?.price === "number" ? it.product.price : 0);
+
+    const lineTotal = qty * unitPrice;
+
+    return `
+      <tr>
+        <td style="padding:8px; border:1px solid #ddd;">${title}</td>
+        <td style="padding:8px; border:1px solid #ddd; text-align:right;">${qty}</td>
+        <td style="padding:8px; border:1px solid #ddd; text-align:right;">\$${unitPrice.toFixed(2)}</td>
+        <td style="padding:8px; border:1px solid #ddd; text-align:right;">\$${lineTotal.toFixed(2)}</td>
+      </tr>
+    `;
+  }).join('');
 
   // Delivery details
   let deliveryHtml = '';
   if (deliveryMethod === 'pickup' && pickupInfo) {
     deliveryHtml = `
       <tr><td colspan="4" style="padding:8px; border:1px solid #ddd;">
-        <strong>Pickup Time:</strong> ${new Date(pickupInfo.timeSlot).toLocaleString()}
+        <strong>Pickup Time:</strong> ${pickupInfo.timeSlot ? new Date(pickupInfo.timeSlot).toLocaleString() : 'N/A'}
       </td></tr>
       <tr><td colspan="4" style="padding:8px; border:1px solid #ddd;">
-        <strong>Pickup Location:</strong> [${pickupInfo.location.coordinates.join(', ')}]
+        <strong>Pickup Location:</strong> ${pickupInfo.location?.coordinates ? `[${pickupInfo.location.coordinates.join(', ')}]` : 'N/A'}
       </td></tr>
     `;
   } else if (deliveryMethod === 'thirdParty' && thirdPartyInfo) {
     deliveryHtml = `
       <tr><td colspan="4" style="padding:8px; border:1px solid #ddd;">
-        <strong>Carrier ETA:</strong> ${new Date(thirdPartyInfo.eta).toLocaleString()}
+        <strong>Carrier ETA:</strong> ${thirdPartyInfo.eta ? new Date(thirdPartyInfo.eta).toLocaleString() : 'N/A'}
       </td></tr>
       <tr><td colspan="4" style="padding:8px; border:1px solid #ddd;">
-        <strong>Shipping Cost:</strong> \$${thirdPartyInfo.cost.toFixed(2)}
+        <strong>Shipping Cost:</strong> \$${typeof thirdPartyInfo.cost === "number" ? thirdPartyInfo.cost.toFixed(2) : '0.00'}
       </td></tr>
     `;
   }
@@ -223,18 +238,18 @@ exports.sendOrderNotification = async (type, order, recipient) => {
           <tr>
             <td colspan="3" style="padding:8px; border:1px solid #ddd; text-align:right;"><strong>Subtotal</strong></td>
             <td style="padding:8px; border:1px solid #ddd; text-align:right;">
-              <strong>\$${subtotal.toFixed(2)}</strong>
+              <strong>\$${typeof subtotal === "number" ? subtotal.toFixed(2) : "0.00"}</strong>
             </td>
           </tr>
           ${deliveryHtml}
           <tr>
             <td colspan="4" style="padding:8px; border:1px solid #ddd; text-align:right;">
-              <em>Order placed: ${new Date(createdAt).toLocaleString()}</em>
+              <em>Order placed: ${createdAt ? new Date(createdAt).toLocaleString() : "N/A"}</em>
             </td>
           </tr>
           <tr>
             <td colspan="4" style="padding:8px; border:1px solid #ddd; text-align:right;">
-              <em>Last updated: ${new Date(updatedAt).toLocaleString()}</em>
+              <em>Last updated: ${updatedAt ? new Date(updatedAt).toLocaleString() : "N/A"}</em>
             </td>
           </tr>
         </tbody>
@@ -251,6 +266,7 @@ exports.sendOrderNotification = async (type, order, recipient) => {
     html
   });
 };
+
 
 /**
  * Send an email notification for a new chat message.
