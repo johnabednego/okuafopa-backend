@@ -153,8 +153,6 @@ exports.sendOrderNotification = async (type, order, recipient) => {
     updatedAt
   } = order;
 
-  console.log("DEBUG order:", JSON.stringify(order, null, 2));
-
   const fullName = `${recipient.firstName} ${recipient.lastName}`;
   let subject, intro;
 
