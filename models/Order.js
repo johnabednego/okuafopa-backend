@@ -1,3 +1,4 @@
+// models/Order.js
 const mongoose = require('mongoose');
 
 //
@@ -56,7 +57,21 @@ const SubOrderSchema = new mongoose.Schema({
     default: 'pending'
   }
 
-}, { _id: true });
+}, { _id: true, toObject: { virtuals: true }, toJSON: { virtuals: true } });
+
+// simple UI-friendly status mapping for suborders
+SubOrderSchema.virtual('simpleStatus').get(function () {
+  const s = this.status;
+  if (!s) return 'pending';
+  if (s === 'delivered') return 'delivered';
+  if (s === 'cancelled') return 'cancelled';
+  // treat ready/in_transit/accepted/partially_delivered/in_progress as in_progress
+  if (['ready', 'in_transit', 'accepted', 'partially_delivered', 'in_progress'].includes(s)) {
+    return 'in_progress';
+  }
+  // fallback
+  return 'pending';
+});
 
 //
 // Parent Order Schema
@@ -85,12 +100,10 @@ const OrderSchema = new mongoose.Schema({
   },
 
   lastUpdatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
-}, { timestamps: true });
+}, { timestamps: true, toObject: { virtuals: true }, toJSON: { virtuals: true } });
 
 
-//
-// 🔹 Derived Global Status
-//
+// Derived Global Status (unchanged)
 OrderSchema.methods.updateDerivedStatus = function () {
   const subStatuses = this.subOrders.map(s => s.status);
 
@@ -106,6 +119,16 @@ OrderSchema.methods.updateDerivedStatus = function () {
     this.status = 'pending';
   }
 };
+
+// Virtual on Order to expose a compact/simple status for UI
+OrderSchema.virtual('simpleStatus').get(function () {
+  const s = this.status;
+  if (!s) return 'pending';
+  if (s === 'delivered') return 'delivered';
+  if (s === 'cancelled') return 'cancelled';
+  if (s === 'partially_delivered' || s === 'in_progress') return 'in_progress';
+  return 'pending';
+});
 
 OrderSchema.pre('save', function (next) {
   this.updateDerivedStatus();
