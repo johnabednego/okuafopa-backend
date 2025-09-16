@@ -2,6 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const http = require('http');
+const socketService = require('./services/socket');
 const customCors = require('./middleware/customCors');
 const connectDB = require('./config/db');
 const setupSwaggerDocs = require('./config/swaggerUiConfig');
@@ -20,10 +22,10 @@ const feedbackRoutes = require('./routes/feedbackRoutes');
 
 
 // Initialize app
-const app = express();
+const server = express();
 
 // Security headers
-app.use(helmet());
+server.use(helmet());
 
 // Connect to MongoDB
 connectDB();
@@ -32,52 +34,52 @@ connectDB();
 if (!process.env.ALLOWED_ORIGINS) {
   throw new Error('ALLOWED_ORIGINS environment variable is required');
 }
-app.use(customCors);
+server.use(customCors);
 
 // HTTP request logging with Morgan
 // 'combined' gives us Apache-style logs whiles 'dev' gives us a concise colored output
-app.use(morgan('dev'));
+server.use(morgan('dev'));
 
 // Body parsing middleware
-app.use(express.json({ limit: '10mb' }));
+server.use(express.json({ limit: '10mb' }));
 
 // Swagger docs (non-production only)
 if (process.env.NODE_ENV !== 'production') {
-  setupSwaggerDocs(app);
+  setupSwaggerDocs(server);
 }
 
 // Mount auditLog routes
-app.use('/api/audit-logs', auditLogRoutes);
+server.use('/api/audit-logs', auditLogRoutes);
 // Mount user routes
-app.use('/api/users', userRoutes);
+server.use('/api/users', userRoutes);
 // Mount auth routes
-app.use('/api/auth', authRoutes);
+server.use('/api/auth', authRoutes);
 // Mount product-categories routes
-app.use('/api/product-categories', productCategoryRoutes);
+server.use('/api/product-categories', productCategoryRoutes);
 // Mount product-listings routes
-app.use('/api/product-listings', productListingRoutes);
+server.use('/api/product-listings', productListingRoutes);
 // Mount product-items routes
-app.use('/api/product-items', productItemRoutes);
+server.use('/api/product-items', productItemRoutes);
 // Mount order routes
-app.use('/api/orders', orderRoutes);
+server.use('/api/orders', orderRoutes);
 // Mount transaction routes
-app.use('/api/transactions', transactionRoutes);
+server.use('/api/transactions', transactionRoutes);
 // Mount message routes
-app.use('/api/messages', messageRoutes);
+server.use('/api/messages', messageRoutes);
 // Mount feedback routes
-app.use('/api/feedbacks', feedbackRoutes);
+server.use('/api/feedbacks', feedbackRoutes);
 
 
 
 // Example root route
-app.get('/', (req, res) => {
+server.get('/', (req, res) => {
   res.send('Server is Up and Running!');
 });
 
 // Graceful shutdown
 process.on('SIGINT', () => {
   console.log('Gracefully shutting down...');
-  app.close(() => {
+  server.close(() => {
     console.log('Closed out remaining connections');
     process.exit(0);
   });
@@ -92,6 +94,10 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
   process.exit(1);
 });
+
+
+const app = http.createServer(server);
+socketService.init(app);
 
 // Start server
 const PORT = process.env.PORT || 5000;
