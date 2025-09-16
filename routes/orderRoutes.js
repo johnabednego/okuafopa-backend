@@ -1,5 +1,3 @@
-// routes/orderRoutes.js
-
 const express = require('express');
 const router = express.Router();
 const orderCtl = require('../controllers/orderController');
@@ -151,6 +149,9 @@ router.get('/', requireAuth, orderCtl.listOrders);
  */
 router.get('/:id', requireAuth, orderCtl.getOrder);
 
+// farmer-only lightweight listing
+router.get('/farmer/subOrders', requireAuth, orderCtl.getFarmerSubOrders);
+
 /**
  * @swagger
  * /orders:
@@ -283,6 +284,11 @@ router.patch(
   orderCtl.updateOrderItemStatus
 );
 
+router.patch(
+  '/:orderId/subOrders/:subOrderId/status',
+  requireAuth,
+  orderCtl.updateSubOrderStatus
+);
 
 /**
  * @swagger

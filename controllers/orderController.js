@@ -1,4 +1,3 @@
-// controllers/orderController.js
 const mongoose = require('mongoose');
 const Joi = require('joi');
 
@@ -7,6 +6,7 @@ const ProductListing = require('../models/ProductListing');
 const User = require('../models/User');
 const notificationService = require('../services/emailService');
 const withAudit = require('../utils/withAudit');
+const socketService = require('../services/socket'); // socket helper
 
 /* ===== Validation (Joi) ===== */
 const orderSchema = Joi.object({
@@ -44,6 +44,9 @@ const orderSchema = Joi.object({
   ).required()
 });
 
+/* ===== allowed item statuses (server-side) ===== */
+const ALLOWED_ITEM_STATUSES = ['pending', 'accepted', 'rejected', 'ready', 'in_transit', 'delivered', 'cancelled'];
+
 /* ===== Helpers: status derivation ===== */
 function deriveSubOrderStatus(items) {
   if (!Array.isArray(items) || items.length === 0) return 'pending';
@@ -80,6 +83,54 @@ async function findAndPopulateOrder(orderId) {
       populate: { path: 'productItem', model: 'ProductItem', select: 'productName' }
     })
     .lean();
+}
+
+/* ===== Socket emit helpers ===== */
+async function safeEmitToBuyerAndFarmers(populated) {
+  try {
+    const io = socketService.getIo();
+    if (!io) return;
+    if (populated?.buyer?._id) {
+      io.to(`buyer:${String(populated.buyer._id)}`).emit('order:created', populated);
+    }
+    if (Array.isArray(populated.subOrders)) {
+      for (const so of populated.subOrders) {
+        const farmerId = so.farmer && (typeof so.farmer === 'object' ? so.farmer._id : so.farmer);
+        if (farmerId) {
+          io.to(`farmer:${String(farmerId)}`).emit('suborder:created', { orderId: populated._id, subOrder: so });
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Emit after order created failed', e);
+  }
+}
+
+async function safeEmitOrderUpdate(populated, subOrder = null) {
+  try {
+    const io = socketService.getIo();
+    if (!io) return;
+    if (populated?.buyer?._id) {
+      io.to(`buyer:${String(populated.buyer._id)}`).emit('order:update', populated);
+    }
+    // if subOrder param provided, emit targeted update to farmer
+    if (subOrder) {
+      const farmerId = subOrder.farmer && (typeof subOrder.farmer === 'object' ? subOrder.farmer._id : subOrder.farmer);
+      if (farmerId) {
+        io.to(`farmer:${String(farmerId)}`).emit('suborder:update', { orderId: populated._id, subOrderId: subOrder._id, subOrder });
+      }
+    } else if (Array.isArray(populated.subOrders)) {
+      // otherwise, notify all farmers included
+      for (const so of populated.subOrders) {
+        const farmerId = so.farmer && (typeof so.farmer === 'object' ? so.farmer._id : so.farmer);
+        if (farmerId) {
+          io.to(`farmer:${String(farmerId)}`).emit('suborder:update', { orderId: populated._id, subOrderId: so._id, subOrder: so });
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Emit order update failed', e);
+  }
 }
 
 /* ===== CREATE order (transaction + per-farmer notifications) ===== */
@@ -167,7 +218,7 @@ exports.createOrder = withAudit('Order', 'CREATE', async (req, res, next) => {
 
     const populated = await findAndPopulateOrder(orderDoc._id);
 
-    // Notify buyer
+    // Notify buyer (best-effort)
     try {
       await notificationService.sendOrderNotification('created', populated, populated.buyer || req.user);
     } catch (e) {
@@ -199,6 +250,13 @@ exports.createOrder = withAudit('Order', 'CREATE', async (req, res, next) => {
       console.error('Per-farmer notifications failed', e);
     }
 
+    // Emit socket events (best-effort, non-blocking)
+    try {
+      await safeEmitToBuyerAndFarmers(populated);
+    } catch (e) {
+      console.error('Socket emit failed after createOrder', e);
+    }
+
     res.locals.created = populated;
     res.locals.auditUser = req.user.sub;
     return res.status(201).json(populated);
@@ -213,7 +271,19 @@ exports.createOrder = withAudit('Order', 'CREATE', async (req, res, next) => {
 exports.listOrders = async (req, res, next) => {
   try {
     const filter = {};
-    if (!req.user.isAdmin) filter.buyer = req.user.sub;
+
+    const userId = req.user.sub;
+    const isAdmin = !!req.user.isAdmin;
+    const isFarmer = req.user.role === 'farmer';
+
+    if (isAdmin) {
+      // no filter
+    } else if (isFarmer) {
+      // IMPORTANT: use `new mongoose.Types.ObjectId(...)` (not calling ObjectId as function)
+      filter['subOrders.farmer'] = new mongoose.Types.ObjectId(userId);
+    } else {
+      filter.buyer = new mongoose.Types.ObjectId(userId);
+    }
 
     const orders = await Order.find(filter)
       .populate('buyer', 'firstName lastName email phoneNumber')
@@ -238,12 +308,119 @@ exports.getOrder = async (req, res, next) => {
   try {
     const order = await findAndPopulateOrder(req.params.id);
     if (!order) return res.status(404).json({ message: 'Order not found' });
-    if (!req.user.isAdmin && String(order.buyer._id) !== String(req.user.sub)) return res.status(403).json({ message: 'Forbidden' });
+
+    const userId = req.user.sub;
+    const isAdmin = !!req.user.isAdmin;
+    const isFarmer = req.user.role === 'farmer';
+
+    if (!isAdmin) {
+      if (isFarmer) {
+        const has = Array.isArray(order.subOrders) && order.subOrders.some(so => {
+          const f = so.farmer;
+          if (!f) return false;
+          return (typeof f === 'object' ? String(f._id) === String(userId) : String(f) === String(userId));
+        });
+        if (!has) return res.status(403).json({ message: 'Forbidden' });
+      } else {
+        if (String(order.buyer._id) !== String(userId)) {
+          return res.status(403).json({ message: 'Forbidden' });
+        }
+      }
+    }
+
     res.json(order);
   } catch (err) {
     next(err);
   }
 };
+
+/* ===== NEW: Get only subOrders for current farmer (lightweight) =====
+   GET /orders/farmer/subOrders
+   - returns orders but each order.subOrders array contains only subOrders for the farmer
+   - we populate product listings (images, price, productItem) client-side after aggregation
+*/
+exports.getFarmerSubOrders = async (req, res, next) => {
+  try {
+    const userId = req.user.sub;
+    const objId = new mongoose.Types.ObjectId(userId);
+
+    // first get aggregated docs with only the farmer's subOrders (no product details yet)
+    const docs = await Order.aggregate([
+      { $match: { 'subOrders.farmer': objId } },
+      {
+        $project: {
+          _id: 1,
+          createdAt: 1,
+          updatedAt: 1,
+          buyer: 1,
+          subOrders: {
+            $filter: {
+              input: '$subOrders',
+              as: 'so',
+              cond: { $eq: ['$$so.farmer', objId] }
+            }
+          },
+          grandTotal: 1,
+          status: 1
+        }
+      },
+      { $sort: { createdAt: -1 } }
+    ]);
+
+    // collect unique product ids from all items (strings)
+    const productIdSet = new Set();
+    for (const doc of docs) {
+      if (!Array.isArray(doc.subOrders)) continue;
+      for (const so of doc.subOrders) {
+        if (!Array.isArray(so.items)) continue;
+        for (const it of so.items) {
+          if (!it || !it.product) continue;
+          // product might already be ObjectId or string; normalize to string
+          productIdSet.add(String(it.product));
+        }
+      }
+    }
+    const productIds = Array.from(productIdSet);
+
+    // fetch product listings in one query and populate productItem
+    let productsById = {};
+    if (productIds.length) {
+      const products = await ProductListing.find({ _id: { $in: productIds } })
+        .select('price images productItem title quantity')
+        .populate({ path: 'productItem', select: 'productName' })
+        .lean();
+
+      productsById = products.reduce((acc, p) => { acc[String(p._id)] = p; return acc; }, {});
+    }
+
+    // replace item.product id with full product doc when available
+    const shaped = docs.map(d => {
+      const copy = { ...d };
+      copy.subOrders = (copy.subOrders || []).map(so => {
+        const soCopy = { ...so };
+        soCopy.items = (soCopy.items || []).map(it => {
+          const itCopy = { ...it };
+          const pid = String(itCopy.product);
+          itCopy.product = productsById[pid] || itCopy.product;
+          return itCopy;
+        });
+        return soCopy;
+      });
+      return copy;
+    });
+
+    // Optionally populate buyer info: lightweight mapping
+    const buyerIds = [...new Set(shaped.map(d => d.buyer).filter(Boolean).map(String))];
+    const buyers = buyerIds.length ? await User.find({ _id: { $in: buyerIds } }).select('firstName lastName email phoneNumber').lean() : [];
+    const buyerById = buyers.reduce((acc, b) => { acc[String(b._id)] = b; return acc; }, {});
+
+    const final = shaped.map(d => ({ ...d, buyer: buyerById[String(d.buyer)] || d.buyer }));
+    res.json(final);
+  } catch (err) {
+    next(err);
+  }
+};
+
 
 /* ===== Admin: update global order status (returns populated) ===== */
 exports.updateOrderStatus = withAudit('Order', 'UPDATE', async (req, res, next) => {
@@ -261,7 +438,9 @@ exports.updateOrderStatus = withAudit('Order', 'UPDATE', async (req, res, next) 
     res.locals.updated = populated;
     res.locals.auditUser = req.user.sub;
 
+    // notify buyer & farmers
     try { await notificationService.sendOrderNotification('statusChanged', populated, populated.buyer || req.user); } catch (e) { console.error('Notify buyer failed', e); }
+    try { await safeEmitOrderUpdate(populated); } catch (e) { console.error('Socket emit failed in updateOrderStatus', e); }
 
     res.json(populated);
   } catch (err) {
@@ -277,6 +456,10 @@ exports.updateOrderItemStatus = withAudit('Order', 'UPDATE', async (req, res, ne
     const { orderId, subOrderId, itemId } = req.params;
     const { itemStatus } = req.body;
 
+    if (!ALLOWED_ITEM_STATUSES.includes(itemStatus)) {
+      return res.status(400).json({ message: 'Invalid itemStatus' });
+    }
+
     const order = await Order.findById(orderId);
     if (!order) return res.status(404).json({ message: 'Order not found' });
 
@@ -286,6 +469,7 @@ exports.updateOrderItemStatus = withAudit('Order', 'UPDATE', async (req, res, ne
     const item = subOrder.items.id(itemId);
     if (!item) return res.status(404).json({ message: 'Item not found' });
 
+    // permissions: farmer of this subOrder or admin
     if (!req.user.isAdmin && String(subOrder.farmer) !== String(req.user.sub)) {
       return res.status(403).json({ message: 'Not authorized' });
     }
@@ -301,7 +485,66 @@ exports.updateOrderItemStatus = withAudit('Order', 'UPDATE', async (req, res, ne
     res.locals.updated = populated;
     res.locals.auditUser = req.user.sub;
 
+    // notify buyer (best-effort)
     try { await notificationService.sendOrderNotification('statusChanged', populated, populated.buyer || req.user); } catch (e) { console.error('Notify buyer failed', e); }
+
+    // emit socket update for this subOrder/item change
+    try { await safeEmitOrderUpdate(populated, subOrder); } catch (e) { console.error('Socket emit failed in updateOrderItemStatus', e); }
+
+    res.json(populated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/* ===== Update subOrder-level status (farmer or admin) =====
+   PATCH /api/orders/:orderId/subOrders/:subOrderId/status
+   body: { status: 'accepted'|'rejected'|'ready'|'in_transit'|'delivered'|..., setItemsTo?: 'accepted'|'ready'|... }
+*/
+exports.updateSubOrderStatus = withAudit('Order', 'UPDATE', async (req, res, next) => {
+  try {
+    const { orderId, subOrderId } = req.params;
+    const { status, setItemsTo } = req.body;
+
+    if (!status) return res.status(400).json({ message: 'Missing status in body' });
+    if (setItemsTo && !ALLOWED_ITEM_STATUSES.includes(setItemsTo)) {
+      return res.status(400).json({ message: 'Invalid setItemsTo value' });
+    }
+
+    const order = await Order.findById(orderId);
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+
+    const subOrder = order.subOrders.id(subOrderId);
+    if (!subOrder) return res.status(404).json({ message: 'SubOrder not found' });
+
+    // permissions: farmer of this subOrder or admin
+    if (!req.user.isAdmin && String(subOrder.farmer) !== String(req.user.sub)) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    // update subOrder.status
+    subOrder.status = status;
+
+    // optionally set every item status
+    if (setItemsTo && Array.isArray(subOrder.items)) {
+      subOrder.items.forEach(it => {
+        it.itemStatus = setItemsTo;
+      });
+    }
+
+    // recalc derived order status
+    order.status = deriveOrderStatus(order.subOrders);
+    order.lastUpdatedBy = req.user.sub;
+
+    await order.save();
+
+    const populated = await findAndPopulateOrder(order._id);
+    res.locals.updated = populated;
+    res.locals.auditUser = req.user.sub;
+
+    // notify buyer and emit socket update
+    try { await notificationService.sendOrderNotification('statusChanged', populated, populated.buyer || req.user); } catch (e) { console.error('Notify buyer failed', e); }
+    try { await safeEmitOrderUpdate(populated, subOrder); } catch (e) { console.error('Emit failed in updateSubOrderStatus', e); }
 
     res.json(populated);
   } catch (err) {
