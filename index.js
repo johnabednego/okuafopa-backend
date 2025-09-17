@@ -17,8 +17,7 @@ const orderRoutes = require('./routes/orderRoutes');
 const transactionRoutes = require('./routes/transactionRoutes');
 const messageRoutes = require('./routes/messageRoutes');
 const feedbackRoutes = require('./routes/feedbackRoutes');
-
-
+const adminRoutes = require('./routes/adminRoutes')
 
 
 // Initialize app
@@ -68,7 +67,8 @@ server.use('/api/transactions', transactionRoutes);
 server.use('/api/messages', messageRoutes);
 // Mount feedback routes
 server.use('/api/feedbacks', feedbackRoutes);
-
+// Admin
+server.use('/api/admin', adminRoutes)
 
 
 // Example root route
